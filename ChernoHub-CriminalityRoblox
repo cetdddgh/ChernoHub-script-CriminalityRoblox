@@ -1,0 +1,586 @@
+--////////////////////////////////////////////////////////
+--             Р›РћРљРђР›Р¬РќР«Р™ РЎРљР РРџРў: "Р§С‘СЂРЅРѕ С…Р°Р± (Optimized)"
+--////////////////////////////////////////////////////////
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
+
+local LocalPlayer = Players.LocalPlayer
+
+-------------------------------------------------------------------------------
+--    1. РЎРѕР·РґР°С‘Рј ScreenGui Рё РѕСЃРЅРѕРІРЅРѕРµ РѕРєРЅРѕ (mainFrame)
+-------------------------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "VenomHubScreenGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "VenomHubMainFrame"
+mainFrame.Size = UDim2.new(0, 320, 0, 390)
+mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mainFrame.BorderSizePixel = 2
+mainFrame.Visible = false  -- РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ СЃРєСЂС‹С‚Рѕ, РѕС‚РєСЂС‹РІР°С‚СЊ РєР»Р°РІРёС€РµР№ [K]
+mainFrame.Active = true
+mainFrame.Selectable = true
+mainFrame.Parent = screenGui
+
+-- Р—Р°РіРѕР»РѕРІРѕРє
+local titleBar = Instance.new("TextLabel")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+titleBar.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleBar.Font = Enum.Font.SourceSansBold
+titleBar.TextSize = 18
+titleBar.Text = "Р§С‘СЂРЅРѕ С…Р°Р± (Drag / Press K to show/hide)"
+titleBar.Parent = mainFrame
+
+-- РџРѕРґРїРёСЃСЊ РІРЅРёР·Сѓ
+local footerLabel = Instance.new("TextLabel")
+footerLabel.Size = UDim2.new(1, 0, 0, 20)
+footerLabel.Position = UDim2.new(0, 0, 1, -20)
+footerLabel.BackgroundTransparency = 1
+footerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+footerLabel.Font = Enum.Font.SourceSansSemibold
+footerLabel.TextSize = 16
+footerLabel.Text = "By bestik_"
+footerLabel.Parent = mainFrame
+
+-- РџСЂРѕРєСЂСѓС‡РёРІР°РµРјР°СЏ РѕР±Р»Р°СЃС‚СЊ РґР»СЏ РєРЅРѕРїРѕРє
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "ContentFrame"
+contentFrame.Size = UDim2.new(1, -10, 1, -60)
+contentFrame.Position = UDim2.new(0, 5, 0, 35)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+contentFrame.ScrollBarThickness = 4
+contentFrame.Parent = mainFrame
+
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0,5)
+UIListLayout.Parent = contentFrame
+
+-------------------------------------------------------------------------------
+--    2. РџРµСЂРµС‚Р°СЃРєРёРІР°РЅРёРµ РѕРєРЅР° (mainFrame) РїСЂРё СѓРґРµСЂР¶Р°РЅРёРё Р›РљРњ
+-------------------------------------------------------------------------------
+do
+    local dragging = false
+    local dragOffset = Vector2.new()
+
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragOffset = input.Position - mainFrame.AbsolutePosition
+        end
+    end)
+
+    mainFrame.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local newPosition = input.Position - dragOffset
+            mainFrame.Position = UDim2.fromOffset(newPosition.X, newPosition.Y)
+        end
+    end)
+end
+
+-------------------------------------------------------------------------------
+--    3. РљР»Р°РІРёС€Р° [K] РґР»СЏ РїРѕРєР°Р·Р°/СЃРєСЂС‹С‚РёСЏ
+-------------------------------------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gp)
+    if not gp and input.KeyCode == Enum.KeyCode.K then
+        mainFrame.Visible = not mainFrame.Visible
+    end
+end)
+
+-------------------------------------------------------------------------------
+--    4. РћР±СЉСЏРІР»СЏРµРј РІСЃРµ РїРµСЂРµРјРµРЅРЅС‹Рµ Рё С„СѓРЅРєС†РёРё СЃРєСЂРёРїС‚РѕРІ
+-------------------------------------------------------------------------------
+
+--============================ Fly ============================--
+local Fly_Enabled = false
+local Fly_Bind = nil
+local Fly_Connection
+local Fly_Speed = 50
+
+local function Fly_Enable()
+    if Fly_Enabled then return end
+    Fly_Enabled = true
+
+    Fly_Connection = RunService.RenderStepped:Connect(function(dt)
+        if not Fly_Enabled then return end
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local cam = workspace.CurrentCamera
+            local moveDir = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                moveDir += cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                moveDir -= cam.CFrame.LookVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                moveDir -= cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                moveDir += cam.CFrame.RightVector
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                moveDir += Vector3.new(0,1,0)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                moveDir -= Vector3.new(0,1,0)
+            end
+
+            if moveDir.Magnitude > 0 then
+                hrp.CFrame = hrp.CFrame + (moveDir.Unit * Fly_Speed * dt)
+            end
+        end
+    end)
+end
+
+local function Fly_Disable()
+    if not Fly_Enabled then return end
+    Fly_Enabled = false
+    if Fly_Connection then
+        Fly_Connection:Disconnect()
+        Fly_Connection = nil
+    end
+end
+
+--========================== Admin Check ========================--
+local AdminCheck_Enabled = false
+local AdminCheck_Connection
+local AdminCheck_Coroutine
+
+local AdminList = {
+    -- РРјРµРЅР° РІРѕР·РјРѕР¶РЅС‹С… Р°РґРјРёРЅРѕРІ
+    ["tabootvcat"] = true,
+    ["Revenantic"] = true,
+    ["Saabor"] = true,
+    ["MoIitor"] = true,
+    ["IAmUnderAMask"] = true,
+    ["SheriffGorji"] = true,
+    ["xXFireyScorpionXx"] = true,
+    ["LoChips"] = true,
+    ["DeliverCreations"] = true,
+    ["TDXiswinning"] = true,
+    ["TZZV"] = true,
+    ["FelixVenue"] = true,
+    ["SIEGFRlED"] = true,
+    ["ARRYvvv"] = true,
+    ["z_papermoon"] = true,
+    ["Malpheasance"] = true,
+    ["ModHandIer"] = true,
+    ["valphex"] = true,
+    ["J_anday"] = true,
+    ["tvdisko"] = true,
+    ["yIlehs"] = true,
+    ["COLOSSUSBUILTOFSTEEL"] = true,
+    ["SeizedHolder"] = true,
+    ["r3shape"] = true,
+    ["RVVZ"] = true,
+    ["adurize"] = true,
+    ["codedcosmetics"] = true,
+    ["QuantumCaterpillar"] = true,
+    ["FractalHarmonics"] = true,
+    ["GalacticSculptor"] = true,
+    ["oTheSilver"] = true,
+    ["Kretacaous"] = true,
+    ["icarus_xs1goliath"] = true,
+    ["GlamorousDradon"] = true,
+    ["rainjeremy"] = true,
+    ["parachuter2000"] = true,
+    ["faintermercury"] = true,
+    ["harht"] = true,
+    ["Sansek1252"] = true,
+    ["Snorpuwu"] = true,
+    ["BenAzoten"] = true,
+    ["Cand1ebox"] = true,
+    ["KeenlyAware"] = true,
+    ["mrzued"] = true,
+    ["BruhmanVIII"] = true,
+    ["Nystesia"] = true,
+    ["fausties"] = true,
+    ["zateopp"] = true,
+    ["Iordnabi"] = true,
+    ["ReviveTheDevil"] = true,
+    ["jake_jpeg"] = true,
+    ["UncrossedMeat3888"] = true,
+    ["realpenyy"] = true,
+    ["karateeeh"] = true,
+    ["JayyMlg"] = true,
+    ["Lo_Chips"] = true,
+    ["Avelosky"] = true,
+    ["king_ab09"] = true,
+    ["TigerLe123"] = true,
+    ["Dalvanuis"] = true,
+    ["iSonMillions"] = true,
+
+    -- РќРѕРІС‹Рµ РёРјРµРЅР°:
+    ["DieYouOder"] = true,
+    ["whosframed"] = true
+}
+
+local function CheckAdmins()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if AdminList[plr.Name] then
+            LocalPlayer:Kick("Admin")
+            task.wait(2)
+            game:Shutdown()
+            return
+        end
+    end
+end
+
+local function AdminCheck_Enable()
+    if AdminCheck_Enabled then return end
+    AdminCheck_Enabled = true
+
+    -- РЎСЂР°Р·Сѓ РїСЂРѕРІРµСЂСЏРµРј С‚РµРєСѓС‰РёС… РёРіСЂРѕРєРѕРІ
+    CheckAdmins()
+
+    AdminCheck_Connection = Players.PlayerAdded:Connect(function(plr)
+        if not AdminCheck_Enabled then return end
+        if AdminList[plr.Name] then
+            LocalPlayer:Kick("Detected Nigger") -- РСЃС…РѕРґРЅР°СЏ С„РѕСЂРјСѓР»РёСЂРѕРІРєР° Р°РІС‚РѕСЂР°
+            task.wait(2)
+            game:Shutdown()
+        end
+    end)
+
+    AdminCheck_Coroutine = coroutine.create(function()
+        while AdminCheck_Enabled do
+            CheckAdmins()
+            task.wait(4)
+        end
+    end)
+    coroutine.resume(AdminCheck_Coroutine)
+end
+
+local function AdminCheck_Disable()
+    if not AdminCheck_Enabled then return end
+    AdminCheck_Enabled = false
+
+    if AdminCheck_Connection then
+        AdminCheck_Connection:Disconnect()
+        AdminCheck_Connection = nil
+    end
+    AdminCheck_Coroutine = nil
+end
+
+--======================= Deleted Mob<3 =========================--
+local DeletedMob_Ran = false
+local function DeletedMob_RunOnce()
+    if DeletedMob_Ran then return end
+    DeletedMob_Ran = true
+
+    local success, err = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Mick-gordon/Hyper-Escape/main/DeleteMobV2.lua", true))()
+    end)
+    if not success then
+        warn("[Deleted Mob<3] РћС€РёР±РєР°: ", err)
+    end
+end
+
+--========================== Anti AFK ===========================--
+local AntiAFK_Enabled = false
+local AntiAFK_IdledConnection
+local AntiAFK_Coroutine
+
+local function AntiAFK_DoAction()
+    pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:SetKeyDown('0x20')  -- РїСЂРѕР±РµР»
+        task.wait(0.1)
+        VirtualUser:SetKeyUp('0x20')
+    end)
+    pcall(function()
+        local camera = workspace.CurrentCamera
+        camera.CFrame = camera.CFrame * CFrame.Angles(math.rad(0.5), 0, 0)
+        task.wait(0.1)
+        camera.CFrame = camera.CFrame * CFrame.Angles(math.rad(-0.5), 0, 0)
+    end)
+end
+
+local function AntiAFK_Enable()
+    if AntiAFK_Enabled then return end
+    AntiAFK_Enabled = true
+
+    local player = LocalPlayer
+    AntiAFK_IdledConnection = player.Idled:Connect(function()
+        if AntiAFK_Enabled then
+            AntiAFK_DoAction()
+        end
+    end)
+
+    AntiAFK_Coroutine = coroutine.create(function()
+        while AntiAFK_Enabled do
+            AntiAFK_DoAction()
+            task.wait(30)
+        end
+    end)
+    coroutine.resume(AntiAFK_Coroutine)
+end
+
+local function AntiAFK_Disable()
+    if not AntiAFK_Enabled then return end
+    AntiAFK_Enabled = false
+
+    if AntiAFK_IdledConnection then
+        AntiAFK_IdledConnection:Disconnect()
+        AntiAFK_IdledConnection = nil
+    end
+    AntiAFK_Coroutine = nil
+end
+
+--=================== Melee Aura 4 Alt MAX! =====================--
+local MeleeAura_Enabled = false
+local MeleeAura_Connection
+
+local runAttackLoop do
+    local plrs = game:GetService("Players")
+    local me = plrs.LocalPlayer
+    local run = game:GetService("RunService")
+
+    local remote1 = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("XMHH.2")
+    local remote2 = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("XMHH2.2")
+
+    local maxdist = 20
+
+    local function Attack(target)
+        if not (target and target:FindFirstChild("Head")) then return end
+        local arg1 = {
+            [1] = "рџЌћ",
+            [2] = tick(),
+            [3] = me.Character and me.Character:FindFirstChildOfClass("Tool"),
+            [4] = "43TRFWX",
+            [5] = "Normal",
+            [6] = tick(),
+            [7] = true
+        }
+        local result = remote1:InvokeServer(unpack(arg1))
+        task.wait(0.5)
+
+        local tool = me.Character and me.Character:FindFirstChildOfClass("Tool")
+        if tool then
+            local Handle = tool:FindFirstChild("WeaponHandle") or tool:FindFirstChild("Handle")
+                          or me.Character:FindFirstChild("Right Arm")
+            if Handle and target:FindFirstChild("Head") then
+                local arg2 = {
+                    [1] = "рџЌћ",
+                    [2] = tick(),
+                    [3] = tool,
+                    [4] = "2389ZFX34",
+                    [5] = result,
+                    [6] = false,
+                    [7] = Handle,
+                    [8] = target:FindFirstChild("Head"),
+                    [9] = target,
+                    [10] = me.Character:FindFirstChild("HumanoidRootPart").Position,
+                    [11] = target:FindFirstChild("Head").Position
+                }
+                remote2:FireServer(unpack(arg2))
+            end
+        end
+    end
+
+    runAttackLoop = function()
+        return run.RenderStepped:Connect(function()
+            if not MeleeAura_Enabled then return end
+            local char = me.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, plr in ipairs(plrs:GetPlayers()) do
+                    if plr ~= me then
+                        local c = plr.Character
+                        local hrp2 = c and c:FindFirstChild("HumanoidRootPart")
+                        local hum = c and c:FindFirstChildOfClass("Humanoid")
+                        if hrp2 and hum then
+                            local dist = (hrp.Position - hrp2.Position).Magnitude
+                            if dist < maxdist and hum.Health > 15 and not c:FindFirstChildOfClass("ForceField") then
+                                Attack(c)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end
+
+local function MeleeAura_Enable()
+    if MeleeAura_Enabled then return end
+    MeleeAura_Enabled = true
+    MeleeAura_Connection = runAttackLoop()
+end
+
+local function MeleeAura_Disable()
+    if not MeleeAura_Enabled then return end
+    MeleeAura_Enabled = false
+
+    if MeleeAura_Connection then
+        MeleeAura_Connection:Disconnect()
+        MeleeAura_Connection = nil
+    end
+end
+
+--======================= Teleport Farm =========================--
+local TPFarm_Enabled = false
+local TPFarm_TargetName = "selimkarakutuk296"
+
+-- РЎРѕС…СЂР°РЅСЏРµРј РІСЃРµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ, С‡С‚РѕР±С‹ РѕС‚РєР»СЋС‡Р°С‚СЊ РїСЂРё Disable
+local TPFarm_SteppedConnection = nil
+local TPFarm_RenderConnection = nil
+local TPFarm_CharConnection = nil
+local DeathRespawn_Event = game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("DeathRespawn")
+
+-- Р›РѕРєР°Р»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ, РІС‹Р·С‹РІР°РµРјР°СЏ РїСЂРё СЃРїР°РІРЅРµ РїРµСЂСЃРѕРЅР°Р¶Р° (CharacterAdded)
+local function TPFarm_OnCharacterAdded(char)
+    -- РќР° РІСЃСЏРєРёР№ СЃР»СѓС‡Р°Р№ РѕС‚РєР»СЋС‡РёРј СЃС‚Р°СЂС‹Р№ SteppedConnection, РµСЃР»Рё РµС‰С‘ РЅРµ РѕС‚РєР»СЋС‡С‘РЅ
+    if TPFarm_SteppedConnection then
+        TPFarm_SteppedConnection:Disconnect()
+        TPFarm_SteppedConnection = nil
+    end
+
+    -- РќРµРјРЅРѕРіРѕ Р¶РґС‘Рј, С‡С‚РѕР±С‹ HumanoidRootPart СѓСЃРїРµР» Р·Р°РіСЂСѓР·РёС‚СЊСЃСЏ
+    task.wait(0.4)
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not (hrp and hum) then return end
+
+    -- РџРѕРґРєР»СЋС‡Р°РµРјСЃСЏ Рє RunService.Stepped РґР»СЏ С‚РµР»РµРїРѕСЂС‚Р° Рє РіР»Р°РІРЅРѕРјСѓ РёРіСЂРѕРєСѓ
+    TPFarm_SteppedConnection = RunService.Stepped:Connect(function()
+        if not TPFarm_Enabled then return end
+        local mainPlayer = Players:FindFirstChild(TPFarm_TargetName)
+        local mainChar = mainPlayer and mainPlayer.Character
+        local mainHRP = mainChar and mainChar:FindFirstChild("HumanoidRootPart")
+        if mainHRP then
+            -- Р”РµСЂР¶РёРј РїРµСЂСЃРѕРЅР°Р¶Р° РЅР° СЂР°СЃСЃС‚РѕСЏРЅРёРё 3 РµРґРёРЅРёС† РїРµСЂРµРґ С‚Р°СЂРіРµС‚РѕРј
+            hrp.CFrame = mainHRP.CFrame + (mainHRP.CFrame.LookVector * 3)
+
+            -- Р Р°Р·РѕРІРѕ РїРѕРґРєР»СЋС‡РёРјСЃСЏ Рє HealthChanged, С‡С‚РѕР±С‹ РѕР±РЅСѓР»СЏС‚СЊ Р·РґРѕСЂРѕРІСЊРµ
+            -- (Р•СЃР»Рё СЌС‚Рѕ РґРµР»Р°С‚СЊ РїСЂРё РєР°Р¶РґРѕРј СЂРµРЅРґРµСЂРµ, Р±СѓРґРµС‚ СѓС‚РµС‡РєР°)
+            hum:GetPropertyChangedSignal("Health"):Connect(function()
+                hum.Health = 0
+            end)
+        end
+    end)
+end
+
+local function TPFarm_Enable()
+    if TPFarm_Enabled then return end
+    TPFarm_Enabled = true
+
+    local me = LocalPlayer
+
+    -- Р•СЃР»Рё РїРµСЂСЃРѕРЅР°Р¶ СѓР¶Рµ РµСЃС‚СЊ
+    if me.Character then
+        TPFarm_OnCharacterAdded(me.Character)
+    end
+
+    -- РћС‚СЃР»РµР¶РёРІР°РµРј СЂРµСЃРїР°РІРЅС‹
+    TPFarm_CharConnection = me.CharacterAdded:Connect(function(newChar)
+        if not TPFarm_Enabled then return end
+        TPFarm_OnCharacterAdded(newChar)
+
+        -- РџРµСЂРµРЅРѕСЃРёРј РѕСЂСѓР¶РёРµ РёР· СЂСЋРєР·Р°РєР° РІ СЂСѓРєРё
+        local tool = me.Backpack:FindFirstChildOfClass("Tool")
+        if tool and newChar then
+            tool.Parent = newChar
+        end
+    end)
+
+    -- РџРѕРґРєР»СЋС‡Р°РµРјСЃСЏ Рє RenderStepped, С‡С‚РѕР±С‹ Р°РІС‚Рѕ-РІРѕР·СЂРѕР¶РґР°С‚СЊСЃСЏ РїСЂРё СЃРјРµСЂС‚Рё
+    TPFarm_RenderConnection = RunService.RenderStepped:Connect(function()
+        if not TPFarm_Enabled then return end
+        local char = me.Character
+        if char then
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health <= 0 then
+                DeathRespawn_Event:InvokeServer("KMG4R904")
+            end
+        end
+    end)
+end
+
+local function TPFarm_Disable()
+    if not TPFarm_Enabled then return end
+    TPFarm_Enabled = false
+
+    if TPFarm_SteppedConnection then
+        TPFarm_SteppedConnection:Disconnect()
+        TPFarm_SteppedConnection = nil
+    end
+    if TPFarm_RenderConnection then
+        TPFarm_RenderConnection:Disconnect()
+        TPFarm_RenderConnection = nil
+    end
+    if TPFarm_CharConnection then
+        TPFarm_CharConnection:Disconnect()
+        TPFarm_CharConnection = nil
+    end
+end
+
+--================= 3 Save-РєРЅРѕРїРєРё (Cube/Vibecheck/Mountain) =======
+local event = DeathRespawn_Event  -- РЎРѕРєСЂР°С‚РёРј РЅР°Р·РІР°РЅРёРµ
+
+-- 1) Save Cube
+local SaveCube_Enabled = false
+local SaveCube_Connection
+local SaveCube_Position = Vector3.new(-4184.4, 102.7, 276.9)
+
+local function SaveCube_Enable()
+    if SaveCube_Enabled then return end
+    SaveCube_Enabled = true
+
+    SaveCube_Connection = RunService.RenderStepped:Connect(function()
+        if not SaveCube_Enabled then return end
+        local char = LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hrp then
+                hrp.CFrame = CFrame.new(SaveCube_Position)
+            end
+            if hum and hum.Health <= 0 then
+                event:InvokeServer("KMG4R904") -- Р°РІС‚Рѕ РІРѕР·СЂРѕР¶РґРµРЅРёРµ
+            end
+        end
+    end)
+end
+
+local function SaveCube_Disable()
+    if not SaveCube_Enabled then return end
+    SaveCube_Enabled = false
+    if SaveCube_Connection then
+        SaveCube_Connection:Disconnect()
+        SaveCube_Connection = nil
+    end
+end
+
+-- 2) Save Vibecheck
+local SaveVibe_Enabled = false
+local SaveVibe_Connection
+local SaveVibe_Position = Vector3.new(-4857.5, -161.5, -918.3)
+
+local function SaveVibe_Enable()
+    if SaveVibe_Enabled then return end
+    SaveVibe_Enabled = true
+
+    SaveVibe_Connection = RunService.RenderStepped:Connect(function()
+        if not SaveVibe_Enabled then return end
+        local char = LocalPlayer.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:
